@@ -1,0 +1,44 @@
+name: Keep backend awake
+
+# Render's free web service sleeps after ~15 minutes idle and takes 30-60s to
+# wake, and the Neon database suspends separately. Pinging /api/health every 13
+# minutes keeps both warm; that endpoint runs a real query, so one ping covers
+# the web service and the database together.
+#
+# Only during opening hours. GitHub Actions schedules are UTC and India is
+# UTC+5:30, so 02:00-15:59 UTC is 07:30-21:25 IST. That is deliberately a little
+# wider than the 08:00-21:00 working day so the app is already warm when the
+# shop opens. Roughly 13 hours a day keeps well inside Render's 750 free
+# instance-hours a month; pinging around the clock would not.
+
+on:
+  schedule:
+    - cron: "*/13 2-15 * * *"
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        env:
+          # Override by setting a HEALTH_URL variable under
+          # Settings -> Secrets and variables -> Actions -> Variables.
+          HEALTH_URL: ${{ vars.HEALTH_URL || 'https://bavas-carwash-backend.onrender.com/api/health' }}
+        run: |
+          set -u
+          for attempt in 1 2 3; do
+            # A cold Render instance can take up to a minute to answer, so allow
+            # a generous timeout before treating the attempt as failed.
+            code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 90 "$HEALTH_URL" || echo 000)
+            echo "attempt $attempt -> HTTP $code"
+            cat response.txt 2>/dev/null || true
+            echo
+            if [ "$code" = "200" ]; then
+              echo "Backend and database are awake."
+              exit 0
+            fi
+            [ "$attempt" -lt 3 ] && sleep 30
+          done
+          echo "::error::Health check failed three times against $HEALTH_URL"
+          exit 1

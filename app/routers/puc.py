@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models import PucEntry, User, UserRole
-from app.schemas import PucEntryCreate, PucEntryOut, PucEntryUpdate
+from app.schemas import PucEntryCreate, PucEntryOut, PucEntryPage, PucEntryUpdate
 
 router = APIRouter(
     prefix="/api/puc",
@@ -13,9 +13,19 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[PucEntryOut])
-def list_puc_entries(db: Session = Depends(get_db)):
-    return db.query(PucEntry).order_by(PucEntry.date.desc(), PucEntry.id.desc()).all()
+@router.get("", response_model=PucEntryPage)
+def list_puc_entries(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """One page of PUC entries, newest first."""
+    query = db.query(PucEntry)
+    total = query.count()
+    items = (
+        query.order_by(PucEntry.date.desc(), PucEntry.id.desc()).offset(offset).limit(limit).all()
+    )
+    return PucEntryPage(items=items, total=total, has_more=offset + len(items) < total)
 
 
 @router.post("", response_model=PucEntryOut, status_code=201)

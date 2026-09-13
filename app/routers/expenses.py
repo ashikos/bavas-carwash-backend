@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from app.models import Expense, User, UserRole
-from app.schemas import ExpenseCreate, ExpenseOut, ExpenseUpdate
+from app.schemas import ExpenseCreate, ExpenseOut, ExpensePage, ExpenseUpdate
 
 router = APIRouter(
     prefix="/api/expenses",
@@ -13,9 +13,19 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[ExpenseOut])
-def list_expenses(db: Session = Depends(get_db)):
-    return db.query(Expense).order_by(Expense.date.desc(), Expense.id.desc()).all()
+@router.get("", response_model=ExpensePage)
+def list_expenses(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """One page of expenses, newest first."""
+    query = db.query(Expense)
+    total = query.count()
+    items = (
+        query.order_by(Expense.date.desc(), Expense.id.desc()).offset(offset).limit(limit).all()
+    )
+    return ExpensePage(items=items, total=total, has_more=offset + len(items) < total)
 
 
 @router.post("", response_model=ExpenseOut, status_code=201)
