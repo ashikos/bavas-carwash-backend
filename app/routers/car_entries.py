@@ -7,7 +7,17 @@ from sqlalchemy.orm import Session
 from app.auth import require_role
 from app.database import get_db
 from app.models import CarEntry, UserRole
-from app.schemas import CarEntryCreate, CarEntryOut, CarEntryPage, CarEntryUpdate
+from app.schemas import (
+    BulkDeleteRequest,
+    BulkDeleteResult,
+    CarEntryCreate,
+    CarEntryOut,
+    CarEntryPage,
+    CarEntryUpdate,
+)
+
+# A guard against a runaway request, not a limit anyone should hit by hand.
+MAX_BULK_DELETE = 500
 
 router = APIRouter(
     prefix="/api/car-entries",
@@ -65,6 +75,27 @@ def create_car_entry(payload: CarEntryCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(entry)
     return entry
+
+
+# Declared before the "/{entry_id}" routes so "bulk-delete" is never read as an id.
+@router.post("/bulk-delete", response_model=BulkDeleteResult)
+def bulk_delete_car_entries(payload: BulkDeleteRequest, db: Session = Depends(get_db)):
+    """Delete several entries at once, from the list's row checkboxes."""
+    if not payload.ids:
+        raise HTTPException(status_code=422, detail="No entries were selected")
+    if len(payload.ids) > MAX_BULK_DELETE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Please delete at most {MAX_BULK_DELETE} entries at a time",
+        )
+
+    deleted = (
+        db.query(CarEntry)
+        .filter(CarEntry.id.in_(set(payload.ids)))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return BulkDeleteResult(deleted=deleted, requested=len(set(payload.ids)))
 
 
 @router.get("/{entry_id}", response_model=CarEntryOut)

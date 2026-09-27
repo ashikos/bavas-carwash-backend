@@ -68,6 +68,19 @@ class CarEntryOut(CarEntryBase):
     updated_at: datetime
 
 
+class BulkDeleteRequest(BaseModel):
+    """Ids to delete in one go, from the list's row checkboxes."""
+
+    ids: list[int]
+
+
+class BulkDeleteResult(BaseModel):
+    # May be fewer than asked for: a row someone else deleted in the meantime is
+    # simply absent, which is the outcome the caller wanted anyway.
+    deleted: int
+    requested: int
+
+
 class CarEntryPage(BaseModel):
     """One page of entries, plus what the caller needs to ask for the next.
 
