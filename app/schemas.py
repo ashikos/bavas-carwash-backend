@@ -69,9 +69,23 @@ class CarEntryOut(CarEntryBase):
 
 
 class BulkDeleteRequest(BaseModel):
-    """Ids to delete in one go, from the list's row checkboxes."""
+    """What to delete: either specific rows, or everything a filter matches.
 
-    ids: list[int]
+    Ticking rows sends `ids`. Choosing "select all matching" instead sends
+    `match_filter` with the same filter the list was showing, so deleting a
+    whole month never requires scrolling it into the browser first.
+    """
+
+    ids: list[int] = []
+
+    match_filter: bool = False
+    q: str | None = None
+    start: date | None = None
+    end: date | None = None
+    # How many rows the user was told they were deleting. The server refuses if
+    # the real count has since changed, so a filter delete can never quietly
+    # remove more than what was on screen.
+    expected: int | None = None
 
 
 class BulkDeleteResult(BaseModel):
